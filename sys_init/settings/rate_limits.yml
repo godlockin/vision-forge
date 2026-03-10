@@ -1,0 +1,131 @@
+# API 限流与重试配置
+# 版本：v1.0
+# 创建日期：2026-03-10
+#
+# 目的：防止专家并发讨论触发 API Rate Limit (TPM/RPM 限制)
+# 策略：Token 桶限流 + 指数退避重试
+
+---
+# Azure OpenAI 配置
+azure_openai:
+  enabled: true
+
+  # 限流配置 (根据实际订阅层级调整)
+  rate_limits:
+    rpm_limit: 60           # Requests Per Minute
+    tpm_limit: 500000       # Tokens Per Minute
+    burst_size: 10          # 令牌桶容量 (允许短时突发)
+
+  # 重试策略
+  retry:
+    max_attempts: 3
+    backoff_multiplier: 2.0     # 指数退避倍数
+    initial_delay_ms: 1000      # 初始延迟 1 秒
+    max_delay_ms: 30000         # 最大延迟 30 秒
+    jitter: 0.1                 # 随机抖动 10%
+
+  # 超时配置
+  timeout:
+    connect_timeout_ms: 10000
+    read_timeout_ms: 60000      # 生图/生视频可能需要更长时间
+
+  # 降级策略
+  fallback:
+    enabled: true
+    on_rate_limit: "wait_and_retry"   # wait_and_retry | switch_provider | queue
+    on_timeout: "switch_provider"
+    switch_to: "vertex_ai"
+
+---
+# Google Vertex AI 配置
+vertex_ai:
+  enabled: true
+
+  # 限流配置 (根据配额调整)
+  rate_limits:
+    rpm_limit: 30           # Gemini 默认配额较低
+    tpm_limit: 300000
+    burst_size: 5
+    image_gen_rpm_limit: 10    # 生图 API 更严格
+    image_gen_rpd_limit: 1000  # Requests Per Day
+
+  # 重试策略
+  retry:
+    max_attempts: 3
+    backoff_multiplier: 2.0
+    initial_delay_ms: 2000     # Gemini 建议更长的初始延迟
+    max_delay_ms: 60000
+    jitter: 0.15
+
+  # 超时配置
+  timeout:
+    connect_timeout_ms: 15000
+    read_timeout_ms: 90000     # 生图操作可能需要 60 秒 +
+
+  # 降级策略
+  fallback:
+    enabled: true
+    on_rate_limit: "wait_and_retry"
+    on_timeout: "notify_pm"    # 生图失败通常需要人工干预
+    queue_max_wait_ms: 120000  # 最多等待 2 分钟
+
+---
+# 全局请求调度器配置
+request_dispatcher:
+  # 令牌桶实现
+  token_bucket:
+    algorithm: "leaky_bucket"     # leaky_bucket | sliding_window
+    refill_interval_ms: 1000      # 每秒补充令牌
+
+  # 重试队列
+  retry_queue:
+    enabled: true
+    max_queue_size: 100
+    priority_levels: 3            # high, normal, low
+
+  # 请求优先级 (专家类型 -> 优先级)
+  priority_mapping:
+    high:
+      - "compliance_legal"        # 合规审查优先
+      - "project_manager"         # PM 决策优先
+    normal:
+      - "visual_expert"
+      - "prompt_engineer"
+      - "photographer"
+    low:
+      - "interior_designer"
+      - "display_designer"
+      - "knowledge_admin"
+
+  # 并发控制
+  concurrency:
+    max_concurrent_requests: 10       # 全局最大并发
+    max_concurrent_per_provider: 5    # 每供应商最大并发
+    expert_semaphore:
+      max_concurrent_per_expert: 2    # 每专家实例最大并发
+
+---
+# 监控与告警
+monitoring:
+  enabled: true
+
+  # 指标收集
+  metrics:
+    - "requests_total"
+    - "requests_failed"
+    - "rate_limit_hits"
+    - "retry_count"
+    - "avg_latency_ms"
+    - "tokens_consumed"
+
+  # 告警阈值
+  alerts:
+    rate_limit_warning: 0.8       # 达到 80% 配额时警告
+    failure_rate_warning: 0.1     # 失败率超过 10% 时警告
+    latency_p99_warning_ms: 30000 # P99 延迟超过 30 秒时警告
+
+  # 日志记录
+  logging:
+    log_request_ids: true
+    log_rate_limit_headers: true
+    log_retry_details: true

@@ -1,0 +1,279 @@
+# 合规违规回退策略配置
+# 版本：v1.0
+# 创建日期：2026-03-10
+#
+# 目的：定义合规一票否决后的 Auto-Fallback 机制
+# 策略：分级处理，可修复违规自动补救，不可修复违规驳回
+
+---
+# 违规类型与严重等级
+violation_types:
+  # ========== 高严重等级 (通常直接驳回) ==========
+  high_severity:
+    - type: "sensitive_content_violation"
+      description: "暴力、色情、仇恨内容"
+      auto_fallback_allowed: false
+      action: "reject_immediately"
+      user_notification:
+        tone: "firm_but_helpful"
+        include_guidelines: true
+
+    - type: "dangerous_activity"
+      description: "危险活动、自残内容"
+      auto_fallback_allowed: false
+      action: "reject_immediately"
+
+    - type: "political_sensitive"
+      description: "政治敏感内容"
+      auto_fallback_allowed: false
+      action: "reject_immediately"
+
+  # ========== 中严重等级 (尝试 Auto-Fallback) ==========
+  medium_severity:
+    - type: "copyright_ip"
+      description: "受版权保护的 IP 角色 (如皮卡丘、漫威角色)"
+      auto_fallback_allowed: true
+      fallback_strategies:
+        - "element_replacement"
+        - "style_divergence"
+      max_attempts: 3
+
+    - type: "brand_trademark"
+      description: "品牌 Logo、商标"
+      auto_fallback_allowed: true
+      fallback_strategies:
+        - "inpainting"
+        - "element_replacement"
+      max_attempts: 2
+
+    - type: "celebrity_resemblance"
+      description: "名人肖像相似度过高"
+      auto_fallback_allowed: true
+      fallback_strategies:
+        - "style_divergence"
+        - "feature_adjustment"
+      max_attempts: 2
+
+    - type: "art_style_copy"
+      description: "过度模仿特定艺术家风格"
+      auto_fallback_allowed: true
+      fallback_strategies:
+        - "style_divergence"
+        - "prompt_adjustment"
+      max_attempts: 2
+
+  # ========== 低严重等级 (优先 Auto-Fallback) ==========
+  low_severity:
+    - type: "quality_below_threshold"
+      description: "质量未达到预设标准"
+      auto_fallback_allowed: true
+      fallback_strategies:
+        - "regenerate_higher_quality"
+        - "expert_refinement"
+      max_attempts: 2
+
+    - type: "prompt_misalignment"
+      description: "生成结果与 prompt 有偏差"
+      auto_fallback_allowed: true
+      fallback_strategies:
+        - "prompt_refinement"
+        - "targeted_regeneration"
+      max_attempts: 2
+
+---
+# Auto-Fallback 执行流程
+auto_fallback_flow:
+  # 第一阶段：违规内容定位
+  localization:
+    enabled: true
+    methods:
+      - "gemini_vision_analysis"    # 使用视觉模型定位违规区域
+      - "mask_generation"           # 生成违规区域 mask
+      - "bounding_box_detection"     # 检测违规元素位置
+
+    output:
+      - violation_masks: []string   # 违规区域 mask
+      - confidence: float           # 定位置信度
+      - description: string         # 违规内容描述
+
+  # 第二阶段：修复策略选择
+  strategy_selection:
+    decision_matrix:
+      # 根据违规类型和定位结果选择策略
+      - if:
+          violation_type: "copyright_ip"
+          area_ratio: "< 0.3"       # 违规区域占比 < 30%
+        then: "inpainting"
+
+      - if:
+          violation_type: "copyright_ip"
+          area_ratio: "> 0.3"
+        then: "element_replacement"
+
+      - if:
+          violation_type: "celebrity_resemblance"
+        then: "style_divergence"
+
+      - if:
+          violation_type: "brand_trademark"
+          localized: true
+        then: "inpainting"
+
+      - if:
+          violation_type: "art_style_copy"
+        then: "style_divergence"
+
+  # 第三阶段：执行修复
+  execution:
+    # 策略 1: 局部重绘
+    inpainting:
+      model: "vertex_ai:imagen-3-fast"
+      params:
+        mask_expansion: 0.1         # mask 扩张 10%
+        blend_strength: 0.8
+        preserve_context: true
+      prompt_template: "Remove {violation_description} and replace with {context_appropriate_content}"
+
+    # 策略 2: 元素替换
+    element_replacement:
+      model: "vertex_ai:imagen-3"
+      params:
+        mask_expansion: 0.15
+        similarity_to_original: 0.6  # 保持原始构图
+      prompt_template: "Replace {violation_description} with similar but legally safe {replacement_type}"
+
+    # 策略 3: 风格调整
+    style_divergence:
+      model: "vertex_ai:gemini-3.0-pro"
+      params:
+        style_shift_strength: 0.5
+        preserve_content: true
+      prompt_template: "Adjust style to be more original while maintaining {content_elements}"
+
+    # 策略 4: 特征调整
+    feature_adjustment:
+      model: "vertex_ai:imagen-3-fast"
+      params:
+        facial_features: "modify"
+        overall_structure: "preserve"
+      prompt_template: "Modify facial features to reduce resemblance while keeping {positive_attributes}"
+
+    # 策略 5: Prompt 优化重绘
+    prompt_refinement:
+      model: "azure_openai:gpt-4o"  # 使用 GPT-4o 优化 prompt
+      params:
+        preserve_intent: true
+        add_constraints: true
+      then_regenerate_with: "vertex_ai:imagen-3"
+
+  # 第四阶段：修复后验证
+  post_fix_verification:
+    enabled: true
+    verifier: "compliance_legal"
+    checks:
+      - "violation_removed"
+      - "quality_maintained"
+      - "no_new_violations"
+
+    if_passed: "proceed_to_delivery"
+    if_failed: "try_next_strategy or reject"
+
+---
+# 驳回报告配置
+rejection_report:
+  # 报告模板
+  template:
+    sections:
+      - section: "violation_summary"
+        content:
+          - violation_type
+          - severity_level
+          - specific_elements
+
+      - section: "legal_rationale"
+        content:
+          - applicable_laws
+          - risk_explanation
+          - precedent_cases (if available)
+
+      - section: "attempted_fixes"
+        content:
+          - strategies_tried
+          - results
+          - why_they_failed
+
+      - section: "suggestions"
+        content:
+          - how_to_modify_request
+          - alternative_approaches
+          - safe_examples
+
+  # 报告语气
+  tone:
+    primary: "professional"
+    secondary: "helpful"
+    avoid: ["accusatory", "condescending"]
+
+  # 附加信息
+  attachments:
+    - original_prompt: true
+    - generated_images: true
+    - violation_highlights: true   # 违规位置标注图
+    - compliance_guidelines: true
+
+---
+# 用户通知配置
+user_notification:
+  # 通知时机
+  timing:
+    on_rejection: "immediate"
+    on_fallback_start: "immediate"
+    on_fallback_success: "with_delivery"
+    on_fallback_failure: "with_rejection_report"
+
+  # 通知内容
+  content:
+    required_fields:
+      - task_id
+      - status
+      - violation_type (if applicable)
+      - action_taken
+
+    optional_fields:
+      - progress_updates
+      - estimated_completion
+      - expert_comments
+
+  # 通知渠道
+  channels:
+    - "api_response"          # API 响应中返回
+    - "websocket"             # WebSocket 推送 (如实现)
+    - "email"                 # 邮件通知 (可选)
+
+---
+# Fallback 统计与分析
+analytics:
+  # 追踪指标
+  metrics:
+    - "fallback_trigger_count"
+    - "fallback_success_rate"
+    - "avg_attempts_per_success"
+    - "failure_rate_by_violation_type"
+    - "user_satisfaction_post_fallback"
+
+  # 阈值告警
+  alerts:
+    - metric: "fallback_success_rate"
+      threshold: "< 0.5"
+      action: "review_strategies"
+
+    - metric: "avg_attempts_per_success"
+      threshold: "> 2.5"
+      action: "optimize_strategy_selection"
+
+  # 持续改进
+  continuous_improvement:
+    enabled: true
+    review_period: "weekly"
+    update_strategy_weights: true
+    learn_from_failures: true

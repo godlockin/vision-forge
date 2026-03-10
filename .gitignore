@@ -1,0 +1,30 @@
+# Environment variables with secrets
+.env
+*.env
+
+# GCP credentials
+gcp-auth.json
+*-auth.json
+*-credentials.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Local settings
+*.local.json
+.local/

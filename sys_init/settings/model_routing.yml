@@ -1,0 +1,255 @@
+# 模型智能路由配置
+# 版本：v1.0
+# 创建日期：2026-03-10
+#
+# 目的：根据任务层次/需求动态选择最合适的模型
+# 原则：禁止使用 GPT-4 及更早版本、禁止使用 Gemini 2.5 之前版本
+
+---
+# 模型白名单 (只允许使用以下模型)
+allowed_models:
+  azure_openai:
+    # GPT-4o 系列 - 推荐用于复杂推理
+    - "gpt-4o"
+    - "gpt-4o-2024-05-13"
+    - "gpt-4o-2024-08-06"
+    - "gpt-4o-2024-11-20"
+
+    # GPT-4o-mini - 轻量级任务
+    - "gpt-4o-mini"
+    - "gpt-4o-mini-2024-07-18"
+
+    # o1 系列 - 深度推理 (如需要)
+    - "o1-preview"
+    - "o1-mini"
+
+    # 文本嵌入
+    - "text-embedding-3-small"
+    - "text-embedding-3-large"
+
+  vertex_ai:
+    # Gemini 2.5+ - 禁止使用 2.5 之前版本
+    - "gemini-2.5-flash"
+    - "gemini-2.5-flash-preview"
+    - "gemini-2.5-pro"
+    - "gemini-2.5-pro-preview"
+
+    # Gemini 3.0+ - 推荐
+    - "gemini-3.0-flash"
+    - "gemini-3.0-flash-preview"
+    - "gemini-3.0-pro"
+    - "gemini-3.0-pro-preview"
+
+    # 图像生成
+    - "imagen-3"
+    - "imagen-3-fast"
+
+    # 嵌入模型
+    - "text-embedding-005"
+    - "text-multilingual-embedding-002"
+
+# 明确禁止的模型 (用于双重校验)
+blocked_models:
+  azure_openai:
+    - "gpt-4"
+    - "gpt-4-32k"
+    - "gpt-4-turbo"
+    - "gpt-4-turbo-preview"
+    - "gpt-35-turbo"
+    - "gpt-35-turbo-16k"
+    - "text-davinci-003"
+    - "text-davinci-002"
+
+  vertex_ai:
+    - "gemini-1.0-pro"
+    - "gemini-1.5-flash"
+    - "gemini-1.5-flash-8b"
+    - "gemini-1.5-pro"
+
+---
+# 任务类型 -> 模型路由映射
+task_routing:
+  # ========== 文本推理类任务 ==========
+  text_reasoning:
+    description: "复杂逻辑推理、任务拆解、决策制定"
+
+    # 高优先级任务 (PM 决策、死锁打断)
+    high_priority:
+      primary: "azure_openai:gpt-4o"
+      fallback: "vertex_ai:gemini-2.5-pro"
+      max_tokens: 8192
+
+    # 常规推理 (专家意见生成)
+    normal:
+      primary: "vertex_ai:gemini-3.0-flash"
+      fallback: "azure_openai:gpt-4o-mini"
+      max_tokens: 4096
+
+    # 轻量任务 (简单分类、打分)
+    light:
+      primary: "azure_openai:gpt-4o-mini"
+      fallback: "vertex_ai:gemini-2.5-flash"
+      max_tokens: 2048
+
+  # ========== 视觉分析类任务 ==========
+  vision_analysis:
+    description: "图像理解、质量评估、缺陷检测"
+
+    # 专业分析 (摄影师、视觉专家)
+    expert:
+      primary: "vertex_ai:gemini-3.0-pro"
+      fallback: "azure_openai:gpt-4o"
+      max_tokens: 8192
+      supports:
+        - "high_resolution"
+        - "multi_image"
+        - "detail_extraction"
+
+    # 常规检查 (合规审查、缺陷检测)
+    standard:
+      primary: "vertex_ai:gemini-2.5-pro"
+      fallback: "vertex_ai:gemini-3.0-flash"
+      max_tokens: 4096
+
+    # 批量预审 (快速筛选)
+    batch:
+      primary: "vertex_ai:gemini-2.5-flash"
+      fallback: "azure_openai:gpt-4o-mini"
+      max_tokens: 2048
+
+  # ========== 图像生成类任务 ==========
+  image_generation:
+    description: "图像编辑、重绘、风格转换"
+
+    # 高质量生成 (最终交付)
+    high_quality:
+      primary: "vertex_ai:imagen-3"
+      fallback: "vertex_ai:imagen-3-fast"
+      max_resolution: "4096x4096"
+      supports:
+        - "inpainting"
+        - "outpainting"
+        - "style_transfer"
+
+    # 快速迭代 (中间过程)
+    fast_iteration:
+      primary: "vertex_ai:imagen-3-fast"
+      fallback: "vertex_ai:imagen-3"
+      max_resolution: "2048x2048"
+
+    # 局部修复 (Auto-Fallback)
+    inpainting:
+      primary: "vertex_ai:imagen-3-fast"
+      fallback: "vertex_ai:imagen-3"
+      max_mask_ratio: 0.4   # 最大遮罩比例 40%
+
+  # ========== 文本生成类任务 ==========
+  text_generation:
+    description: "Prompt 优化、报告生成、反馈撰写"
+
+    # 创造性写作 (Prompt 工程)
+    creative:
+      primary: "vertex_ai:gemini-3.0-pro"
+      fallback: "azure_openai:gpt-4o"
+      max_tokens: 8192
+
+    # 结构化输出 (JSON 报告、日志)
+    structured:
+      primary: "azure_openai:gpt-4o"
+      fallback: "vertex_ai:gemini-2.5-pro"
+      max_tokens: 4096
+      json_mode: true
+
+    # 摘要压缩 (知识管理员)
+    summarization:
+      primary: "vertex_ai:gemini-3.0-flash"
+      fallback: "azure_openai:gpt-4o-mini"
+      compression_ratio: 0.3
+
+  # ========== 嵌入与检索类任务 ==========
+  embedding:
+    description: "语义索引、记忆检索、相似度计算"
+
+    # 中文/多语言
+    multilingual:
+      primary: "vertex_ai:text-multilingual-embedding-002"
+      fallback: "azure_openai:text-embedding-3-large"
+      dimensions: 1024
+
+    # 英文/通用
+    general:
+      primary: "azure_openai:text-embedding-3-large"
+      fallback: "vertex_ai:text-embedding-005"
+      dimensions: 1024
+
+    # 轻量检索 (缓存友好)
+    compact:
+      primary: "azure_openai:text-embedding-3-small"
+      fallback: "vertex_ai:text-embedding-005"
+      dimensions: 512
+
+---
+# 动态路由决策因子
+routing_decision:
+  # 基于输入长度的路由
+  input_length_thresholds:
+    short: 1000       # < 1K tokens -> 轻量模型
+    medium: 4000      # 1K-4K -> 标准模型
+    long: 16000       # 4K-16K -> 大模型
+    very_long: 64000  # > 16K -> 超大模型 (如有需要)
+
+  # 基于成本的自适应路由
+  cost_optimization:
+    enabled: true
+    daily_budget_usd: 50.0
+    alert_at_percentage: 0.8
+    prefer_cost_effective: true  # 在质量相近时优先选择更便宜的模型
+
+  # 基于延迟的路由
+  latency_optimization:
+    enabled: true
+    p99_threshold_ms: 5000
+    switch_to_faster_model: true  # P99 超过阈值时自动切换到更快模型
+
+  # 基于可用性的路由
+  availability_aware:
+    enabled: true
+    health_check_interval_ms: 30000
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout_ms: 60000
+
+---
+# 模型成本参考 (每 1M tokens，用于成本优化路由)
+# 来源：官方定价，2026 年参考价
+model_costs:
+  azure_openai:
+    gpt-4o:
+      input_cost_usd: 2.50
+      output_cost_usd: 10.00
+    gpt-4o-mini:
+      input_cost_usd: 0.15
+      output_cost_usd: 0.60
+    o1-preview:
+      input_cost_usd: 15.00
+      output_cost_usd: 60.00
+    text-embedding-3-large:
+      input_cost_usd: 0.13
+
+  vertex_ai:
+    gemini-3.0-pro:
+      input_cost_usd: 2.00
+      output_cost_usd: 8.00
+    gemini-3.0-flash:
+      input_cost_usd: 0.30
+      output_cost_usd: 1.20
+    gemini-2.5-pro:
+      input_cost_usd: 1.50
+      output_cost_usd: 6.00
+    gemini-2.5-flash:
+      input_cost_usd: 0.15
+      output_cost_usd: 0.60
+    imagen-3:
+      cost_per_image_usd: 0.04
+    imagen-3-fast:
+      cost_per_image_usd: 0.02

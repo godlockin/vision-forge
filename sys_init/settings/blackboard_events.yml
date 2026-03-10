@@ -1,0 +1,248 @@
+# 黑板事件与并发控制配置
+# 版本：v1.0
+# 创建日期：2026-03-10
+#
+# 目的：定义共享黑板的事件类型、写入规则、并发控制机制
+# 策略：Append-only Event Sourcing + 知识管理员定期压缩
+
+---
+# 事件类型定义
+event_types:
+  # ========== 讨论类事件 ==========
+  opinion_added:
+    description: "专家发表意见"
+    schema:
+      expert_id: string
+      round_id: integer
+      content: string
+      references: []string       # 引用的其他事件 ID
+      confidence: float          # 0.0-1.0
+      tags: []string
+
+  score_submitted:
+    description: "专家打分"
+    schema:
+      expert_id: string
+      round_id: integer
+      target_event_id: string    # 被打分的意见 ID
+      score: float               # 1-10
+      rationale: string
+      weights:
+        feasibility: float       # 可行性打分
+        confidence: float        # 置信度自签
+
+  decision_made:
+    description: "阶段性决策"
+    schema:
+      expert_id: string
+      decision_type: string      # task_assignment, direction_change, final_choice
+      content: string
+      alternatives: []string     # 被否决的备选方案
+      vote_result:
+        for: integer
+        against: integer
+        weighted_score: float
+
+  # ========== 流程控制类事件 ==========
+  round_started:
+    description: "新一轮讨论开始"
+    schema:
+      round_id: integer
+      started_by: string         # 通常是 PM
+      topic: string
+      participants: []string
+      time_limit_ms: integer
+
+  round_closed:
+    description: "PM 关闭一轮讨论"
+    schema:
+      round_id: integer
+      closed_by: string
+      reason: string             # consensus_reached, timeout, force_close
+      summary: string
+      next_action: string
+
+  discussion_paused:
+    description: "讨论暂停 (等待外部输入)"
+    schema:
+      paused_by: string
+      reason: string
+      expected_resume_time: timestamp
+
+  # ========== 干预类事件 ==========
+  pm_intervention:
+    description: "PM 强制干预"
+    schema:
+      intervention_type: string  # deadlock_break, redirect, reassign
+      reason: string
+      action_taken: string
+      affected_experts: []string
+
+  veto_triggered:
+    description: "合规专家一票否决"
+    schema:
+      veto_by: string            # 必须是 compliance_legal
+      stage: string              # pre_task, pre_delivery
+      violation_type: string
+      details: string
+      fallback_suggested: boolean
+
+  hr_reassign_request:
+    description: "HR 专家请求重新分配任务"
+    schema:
+      requested_by: string
+      original_expert_id: string
+      reason: string
+      new_expert_requirements: object
+
+  # ========== 知识管理类事件 ==========
+  snapshot_compressed:
+    description: "知识管理员压缩摘要"
+    schema:
+      compressed_by: string      # knowledge_admin
+      source_event_ids: []string
+      summary: string
+      key_points: []string
+      compression_ratio: float
+
+  memory_archived:
+    description: "记忆归档"
+    schema:
+      archived_by: string
+      archive_id: string
+      event_count: integer
+      topics: []string
+
+  index_updated:
+    description: "专家索引库更新"
+    schema:
+      updated_by: string
+      expert_id: string
+      changes: object
+      new_tags: []string
+
+---
+# 并发控制策略
+concurrency_control:
+  # 写入模式
+  write_mode: "append_only"      # append_only | lock_based
+
+  # 锁配置 (仅在 lock_based 模式下使用)
+  lock_config:
+    type: "pessimistic"          # optimistic | pessimistic
+    timeout_ms: 5000
+    retry_on_conflict: true
+    max_retries: 3
+
+  # 轮次控制
+  round_based:
+    enabled: true
+    default_round_time_ms: 30000    # 每轮 30 秒
+    max_rounds: 10
+    extension_allowed: true
+    max_extensions: 2
+
+  # 事件去重
+  deduplication:
+    enabled: true
+    window_ms: 5000                 # 5 秒内相同专家相同类型视为重复
+    check_fields: ["expert_id", "type", "content_hash"]
+
+---
+# 事件溯源存储配置
+event_sourcing:
+  # 存储策略
+  storage:
+    type: "jsonl"                   # jsonl | sqlite | mongodb
+    path: "data/blackboard/events"
+    rotation:
+      enabled: true
+      max_file_size_mb: 100
+      max_files: 50
+
+  # 索引
+  indexing:
+    enabled: true
+    index_fields:
+      - "event_id"
+      - "expert_id"
+      - "round_id"
+      - "event_type"
+      - "timestamp"
+
+  # 快照
+  snapshot:
+    enabled: true
+    interval_events: 100           # 每 100 个事件生成快照
+    interval_ms: 60000             # 或每 60 秒
+    retention_count: 10            # 保留最近 10 个快照
+
+---
+# 知识管理员压缩策略
+knowledge_admin:
+  # 压缩触发条件
+  compression_triggers:
+    event_count_threshold: 100     # 事件数超过 100
+    time_threshold_ms: 120000      # 或超过 2 分钟无新事件
+    memory_usage_mb: 50            # 或内存超过 50MB
+
+  # 压缩策略
+  compression_strategy:
+    # 提取关键点
+    key_point_extraction:
+      max_points: 20
+      min_importance_score: 0.6
+      categories:
+        - "decisions"
+        - "disagreements"
+        - "action_items"
+        - "expert_insights"
+
+    # 摘要生成
+    summarization:
+      model: "vertex_ai:gemini-3.0-flash"
+      max_tokens: 2048
+      style: "bullet_points"
+
+    # 事件合并
+    event_merge:
+      enabled: true
+      merge_similar_opinions: true
+      similarity_threshold: 0.85
+      keep_individual_scores: true  # 保留原始打分用于追溯
+
+  # 归档策略
+  archiving:
+    enabled: true
+    archive_after_ms: 3600000       # 1 小时后归档
+    compress_before_archive: true
+
+---
+# 事件驱动的通知系统
+event_notifications:
+  # 订阅配置
+  subscriptions:
+    - event_types: ["veto_triggered"]
+      notify: ["project_manager", "hr_expert"]
+      immediate: true
+
+    - event_types: ["round_closed", "pm_intervention"]
+      notify: ["all_experts"]
+      immediate: true
+
+    - event_types: ["score_submitted"]
+      notify: ["project_manager"]
+      immediate: false
+      batch_interval_ms: 10000
+
+    - event_types: ["snapshot_compressed"]
+      notify: ["knowledge_admin"]
+      immediate: false
+
+  # 通知方式
+  notification_channels:
+    - type: "memory_queue"          # 内存队列 (专家轮询)
+      enabled: true
+    - type: "webhook"               # Webhook (外部系统集成)
+      enabled: false
+      url: "${WEBHOOK_URL}"

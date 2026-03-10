@@ -1,0 +1,294 @@
+# 专家干预触发规则配置
+# 版本：v1.0
+# 创建日期：2026-03-10
+#
+# 目的：定义专家置信度、可行性打分、讨论轮数等阈值
+# 策略：自动触发 PM/HR 干预，防止低质量输出或死锁
+
+---
+# 置信度阈值配置
+confidence_thresholds:
+  # 置信度范围定义
+  scale:
+    min: 0.0
+    max: 1.0
+    default: 0.7              # 专家默认置信度
+
+  # 低置信度干预
+  low_confidence:
+    warning_threshold: 0.5    # 低于 0.5 触发警告
+    action: "notify_pm"
+    pm_notification:
+      include:
+        - expert_id
+        - task_id
+        - confidence_value
+        - task_description
+      suggested_actions:
+        - "review_task_assignment"
+        - "check_expert_capability_match"
+        - "consider_reassignment"
+
+    critical_threshold: 0.3   # 低于 0.3 自动触发重新分配
+    critical_action: "auto_reassign"
+    hr_notification:
+      include:
+        - expert_id
+        - task_id
+        - confidence_value
+        - failure_analysis
+      required_actions:
+        - "recruit_new_expert"
+        - "update_expert_capabilities"
+
+  # 高置信度奖励
+  high_confidence:
+    bonus_threshold: 0.8      # 高于 0.8 加权系数提升
+    weight_bonus: 0.15        # 加权时额外 +15%
+    fast_track: true          # 高置信度意见优先处理
+
+---
+# 可行性打分配置
+feasibility_scoring:
+  # 打分范围
+  scale:
+    min: 1
+    max: 10
+    pass_threshold: 7.0       # 低于 7 分需要重新评估
+
+  # 低分干预
+  low_score:
+    threshold: 5.0
+    action: "expert_panel_review"
+    review_panel:
+      - "project_manager"
+      - "visual_expert"
+      - "hr_expert"
+    review_criteria:
+      - "task_complexity_assessment"
+      - "expert_capability_match"
+      - "resource_availability"
+    possible_outcomes:
+      - "proceed_with_caution"
+      - "reassign_to_different_expert"
+      - "decompose_task_further"
+      - "recruit_specialist"
+
+  # 中等分数 (5-7 分)
+  medium_score:
+    min: 5.0
+    max: 7.0
+    action: "pm_review"
+    pm_decision_required: true
+    options:
+      - "proceed"
+      - "add_supporting_expert"
+      - "reduce_scope"
+
+  # 高分 (>=7 分)
+  high_score:
+    threshold: 8.5
+    fast_track: true
+    reduced_oversight: true
+
+---
+# 加权共识计算配置
+weighted_consensus:
+  # 权重分配
+  weights:
+    feasibility: 0.4          # 可行性打分权重 40%
+    confidence: 0.3           # 置信度权重 30%
+    peer_score: 0.3           # 互评评分权重 30%
+
+  # 动态权重调整
+  dynamic_adjustment:
+    enabled: true
+    # 专家历史准确率影响权重
+    accuracy_bonus:
+      enabled: true
+      max_bonus: 0.1
+      calculation: "success_rate * 0.1"
+
+    # 领域相关性影响权重
+    domain_relevance:
+      enabled: true
+      high_relevance_bonus: 0.05
+      low_relevance_penalty: -0.05
+
+  # 共识判定
+  consensus_rules:
+    strong_consensus: 0.85    # >=85% 强共识，直接通过
+    weak_consensus: 0.60      # >=60% 弱共识，PM 确认
+    no_consensus: 0.60        # <60% 无共识，触发投票或重新讨论
+
+---
+# 讨论轮数控制
+discussion_rounds:
+  # 轮数限制
+  limits:
+    soft_limit: 5             # 超过 5 轮 PM 关注
+    hard_limit: 10            # 超过 10 轮强制投票
+    emergency_limit: 15       # 绝对上限
+
+  # 轮数阈值干预
+  interventions:
+    - round_threshold: 3
+      action: "pm_monitor"
+      pm_action: "assess_progress"
+
+    - round_threshold: 5
+      action: "pm_warning"
+      pm_action:
+        type: "progress_reminder"
+        include:
+          - "rounds_elapsed"
+          - "key_disagreements"
+          - "time_remaining"
+
+    - round_threshold: 8
+      action: "pm_intervention_recommended"
+      pm_action:
+        type: "redirect_discussion"
+        options:
+          - "focus_on_key_issues"
+          - "split_into_subtasks"
+          - "propose_compromise"
+
+    - round_threshold: 10
+      action: "force_vote"
+      vote_config:
+        type: "weighted_consensus"
+        min_votes_required: 0.6
+        pm_tiebreaker: true
+
+    - round_threshold: 15
+      action: "emergency_resolution"
+      emergency_config:
+        decision_by: "project_manager"
+        consultation_required:
+          - "visual_expert"
+          - "compliance_legal"
+        rationale_documented: true
+
+---
+# 死锁检测与处理
+deadlock_detection:
+  # 死锁判定条件
+  conditions:
+    no_progress_rounds: 3     # 连续 3 轮无进展
+    same_opinions_count: 5    # 相同意见重复 5 次
+    score_variance: 0.1       # 打分方差低于 0.1 (意见极度分化)
+
+  # 死锁处理策略
+  resolution_strategies:
+    - name: "split_vote"
+      description: "将争议点拆分投票"
+      priority: 1
+
+    - name: "expert_substitute"
+      description: "替换争议专家"
+      priority: 2
+      requires_hr: true
+
+    - name: "pm_decision"
+      description: "PM 直接决策"
+      priority: 3
+      requires_rationale: true
+
+    - name: "external_arbiter"
+      description: "引入外部仲裁 (用户)"
+      priority: 4
+      last_resort: true
+
+---
+# 合规一票否决后的干预
+compliance_veto:
+  # 否决后的处理流程
+  post_veto_flow:
+    # 第一步：分类违规类型
+    violation_classification:
+      auto_classify: true
+      categories:
+        - "copyright_ip"        # 版权/IP
+        - "sensitive_content"    # 敏感内容
+        - "brand_trademark"      # 品牌/商标
+        - "celebrity_resemblance" # 名人肖像
+        - "other"
+
+    # 第二步：判定是否可修复
+    fixability_assessment:
+      auto_assess: true
+      criteria:
+        localizable: "违规内容是否可局部定位"
+        replaceable: "是否有合法替代元素"
+        adjustable: "是否可通过风格调整规避"
+
+    # 第三步：执行回退或驳回
+    execution:
+      if_fixable: "auto_fallback"
+      if_unfixable: "reject_with_report"
+
+  # Auto-Fallback 配置
+  auto_fallback:
+    max_attempts: 3
+    attempt_delay_ms: 2000
+
+    strategies:
+      - name: "inpainting"
+        description: "局部重绘违规区域"
+        priority: 1
+        model: "vertex_ai:imagen-3-fast"
+
+      - name: "style_divergence"
+        description: "调整风格降低相似度"
+        priority: 2
+        model: "vertex_ai:gemini-3.0-pro"
+
+      - name: "element_replacement"
+        description: "替换违规元素"
+        priority: 3
+        model: "vertex_ai:imagen-3"
+
+    after_max_attempts:
+      action: "notify_user"
+      include:
+        - original_prompt
+        - violation_details
+        - attempted_fixes_log
+        - compliance_report
+
+  # 驳回报告配置
+  rejection_report:
+    template: "compliance_violation_report"
+    include:
+      - violation_type
+      - specific_elements
+      - legal_rationale
+      - suggestions_for_user
+    tone: "professional_helpful"
+
+---
+# 干预日志与追溯
+intervention_logging:
+  # 日志记录
+  logging:
+    log_all_interventions: true
+    log_triggers: true
+    log_decisions: true
+    log_outcomes: true
+
+  # 追溯信息
+  audit_trail:
+    record_expert_state: true    # 记录干预时专家状态
+    record_blackboard_snapshot: true
+    record_decision_rationale: true
+
+  # 分析报表
+  analytics:
+    enabled: true
+    metrics:
+      - "interventions_per_task"
+      - "avg_rounds_before_intervention"
+      - "intervention_success_rate"
+      - "common_trigger_patterns"
+    review_interval: "weekly"

@@ -1,0 +1,136 @@
+# 动态专家模板
+# 版本：v1.0
+# 创建日期：2026-03-10
+#
+# 使用说明：
+# 1. 当系统识别到新的领域专家需求时，由 HR 专家主导，相关静态专家配合
+# 2. LLM 基于此模板，根据领域描述填充完整配置
+# 3. 生成后进行可行性打分，通过后注册到专家库
+
+---
+# 动态专家模板 (Dynamic Expert Template)
+expert:
+  # ========== 基础标识 ==========
+  id: "{domain}_{role}_{timestamp}"  # 由系统生成唯一 ID
+  role: "{domain}专家"                # 如：UI 排版专家、3D 资产专家
+  archetype: "dynamic"
+  load_strategy: "dynamic"
+
+  # ========== 人设部分（由 LLM 填充）==========
+  persona:
+    description: "{根据 domain 生成一句话角色描述}"
+    background: "{根据 domain 生成背景故事，包含从业年限、成就等}"
+    personality: "{根据 task_context 生成性格特征，2-3 个关键词}"
+
+  # ========== 思维框架（由 LLM 填充 3-5 条）==========
+  thinking_framework:
+    - "{思维原则 1}"
+    - "{思维原则 2}"
+    - "{思维原则 3}"
+
+  # ========== 优势（由 LLM 填充 3-5 条）==========
+  strengths:
+    - "{核心优势 1}"
+    - "{核心优势 2}"
+    - "{核心优势 3}"
+
+  # ========== 劣势（由 LLM 填充 2-3 条）==========
+  weaknesses:
+    - "{潜在劣势 1}"
+    - "{潜在劣势 2}"
+
+  # ========== 盲点（由 LLM 填充 1-2 条）==========
+  blind_spots:
+    - "{可能疏忽点 1}"
+    - "{可能疏忽点 2}"
+
+  # ========== 超人洞察（由 LLM 填充 2-3 条）==========
+  superhuman_insights:
+    - "{独特洞察力 1}"
+    - "{独特洞察力 2}"
+
+  # ========== 能力树（由 LLM 根据领域生成）==========
+  capabilities:
+    - name: "{capability_1}"
+      params: { 参数：值 }
+    - name: "{capability_2}"
+      params: { 参数：值 }
+    - name: "{capability_3}"
+      params: { 参数：值 }
+
+  # ========== 输入输出规格 ==========
+  i_o_spec:
+    input: { type: "{domain 特定的输入类型}", format: "json | base64 | url" }
+    output: { type: "{domain 特定的输出类型}", format: "json" }
+
+  # ========== 决策风格（由 LLM 根据 task_context 判断）==========
+  decision_style:
+    risk_tolerance: "very_low | low | medium | high"
+    consensus_need: "none | low | medium | high"
+
+  # ========== 记忆配置 ==========
+  memory:
+    scope: "task"        # task: 仅限当前任务 | session: 会话内持久 | persistent: 跨任务持久
+    retention: "session" # 任务结束后归档到会话记忆
+
+  # ========== 生命周期管理 ==========
+  lifecycle:
+    creation_trigger: "{触发创建的条件，如：领域需求识别}"
+    initialization: "HR 专家 + 领域相关静态专家联合定义"
+    active_duration: "task_duration"  # 任务期间活跃
+    post_task: "archive_to_memory"    # 任务结束后归档
+
+  # ========== 触发条件（由 LLM 生成）==========
+  trigger_conditions:
+    - "{触发条件 1}"
+    - "{触发条件 2}"
+
+  # ========== 分裂行为（继承自静态专家）==========
+  split_behavior:
+    enabled: true
+    instances:
+      - role: "executor"
+        modifier: "高效完成任务执行"
+      - role: "critic"
+        modifier: "刻薄、挑剔、追求完美的审核者"
+
+---
+# 动态专家生成流程
+#
+# 1. 需求识别
+#    PM+ 视觉专家+HR 讨论 → 识别需要新专家
+#
+# 2. HR 专家主导
+#    HR 定义能力要求、领域边界、期望特质
+#
+# 3. LLM 填充
+#    基于模板 + 领域描述 → 生成完整配置
+#
+# 4. 可行性打分
+#    静态专家组对生成的专家配置进行评估
+#    - 能力匹配度：1-10
+#    - 人设合理性：1-10
+#    - 预期贡献度：1-10
+#    总分 >= 24 分通过
+#
+# 5. 注册与索引
+#    - 保存到 experts/dynamic/ 目录
+#    - 添加到专家索引库（能力标签、领域标签）
+#
+# 6. 实例化执行
+#    - 根据任务需要分裂为执行/审核实例
+#    - 设定置信度后开始任务
+
+---
+# 专家索引库 Schema (experts_index.yml)
+#
+# experts:
+#   - id: "expert_id"
+#     archetype: "static | dynamic"
+#     domain_tags: ["标签 1", "标签 2"]
+#     capability_tags: ["能力 1", "能力 2"]
+#     trigger_keywords: ["关键词 1", "关键词 2"]
+#     feasibility_avg: 8.5  # 历史可行性打分平均值
+#     success_rate: 0.92    # 任务成功率
+#     last_active: "2026-03-10"
+#     status: "active | archived"
