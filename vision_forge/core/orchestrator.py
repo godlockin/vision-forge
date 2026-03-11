@@ -120,7 +120,7 @@ class WorkflowOrchestrator:
         Returns:
             Compliance review result
         """
-        from .experts.compliance import ComplianceExpert
+        from ..experts.compliance import ComplianceExpert
 
         config = self.registry._expert_configs.get("compliance_legal_01")
         if not config:
@@ -217,7 +217,7 @@ class WorkflowOrchestrator:
         Returns:
             Compliance review result
         """
-        from .experts.compliance import ComplianceExpert
+        from ..experts.compliance import ComplianceExpert
 
         config = self.registry._expert_configs.get("compliance_legal_01")
         if not config:
