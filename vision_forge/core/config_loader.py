@@ -72,9 +72,12 @@ def save_expert_config(config: ExpertConfig, path: str) -> None:
     file_path = Path(path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Use json mode to serialize enums as strings
+    config_dict = config.model_dump(mode='json')
+
     with open(file_path, 'w', encoding='utf-8') as f:
         yaml.dump(
-            {'expert': config.model_dump()},
+            {'expert': config_dict},
             f,
             default_flow_style=False,
             allow_unicode=True,

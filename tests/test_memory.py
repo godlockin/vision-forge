@@ -105,13 +105,17 @@ class TestSharedBlackboard:
                 data={"round": i}
             ))
 
-        # Filter by expert
-        events = board.get_events(expert_id="expert_0")
+        # Filter by round 0 (events 0, 2, 4)
+        events = board.get_events(round_number=0)
         assert len(events) == 3  # 0, 2, 4
 
-        # Filter by round
+        # Filter by round 1 (events 1, 3)
         events = board.get_events(round_number=1)
         assert len(events) == 2  # 1, 3
+
+        # Filter by specific expert
+        events = board.get_events(expert_id="expert_0")
+        assert len(events) == 1
 
     @pytest.mark.asyncio
     async def test_get_current_round(self, tmp_path):

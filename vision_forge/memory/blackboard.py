@@ -141,7 +141,7 @@ class SharedBlackboard:
             task_id: Task ID
 
         Returns:
-            Current round number
+            Current round number (max round_number from events for this task)
         """
         events = [e for e in self._events if e.task_id == task_id]
         if not events:
@@ -199,7 +199,8 @@ class SharedBlackboard:
         Returns:
             MD5 hash of event content
         """
-        content = f"{event.type}:{event.expert_id}:{event.task_id}:{json.dumps(event.data, sort_keys=True)}"
+        # Include round_number in hash to avoid dedup events in different rounds
+        content = f"{event.type}:{event.expert_id}:{event.task_id}:{event.round_number}:{json.dumps(event.data, sort_keys=True)}"
         return hashlib.md5(content.encode()).hexdigest()
 
     def clear(self, task_id: str):

@@ -49,6 +49,24 @@ class ComplianceExpert(Expert):
     ):
         super().__init__(config, blackboard, model_router)
 
+    async def process(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process compliance review task.
+
+        Args:
+            task_data: Task data including user_prompt or output_data
+
+        Returns:
+            Review result with pass/fail and violations
+        """
+        user_prompt = task_data.get("user_prompt", "")
+        is_final_review = task_data.get("is_final_review", False)
+
+        if is_final_review:
+            return await self.review_output(user_prompt)
+        else:
+            return await self.review_request(user_prompt)
+
     async def review_request(self, user_prompt: str) -> Dict[str, Any]:
         """
         Review user request for compliance.
