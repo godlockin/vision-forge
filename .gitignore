@@ -42,3 +42,6 @@ htmlcov/
 # Build
 build/
 dist/
+
+# Dynamic experts (generated during runtime)
+experts/dynamic/*.yml
