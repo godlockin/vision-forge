@@ -102,7 +102,7 @@ class ExpertRegistry:
         """
         return list(self._expert_configs.values())
 
-    def get_configs_by archetype(self, archetype: str) -> List[ExpertConfig]:
+    def get_configs_by_archetype(self, archetype: str) -> List[ExpertConfig]:
         """
         Get configs filtered by archetype.
 

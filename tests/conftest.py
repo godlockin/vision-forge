@@ -63,7 +63,7 @@ def pm_expert_config():
         load_strategy=LoadStrategy.ALWAYS,
         persona=Persona(
             description="经验丰富、果断的项目管理者",
-            background: "15 年科技项目管理经验",
+            background="15 年科技项目管理经验",
             personality="务实、果断、以结果为导向"
         ),
         decision_style=DecisionStyle(
